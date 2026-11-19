@@ -461,6 +461,7 @@ def offer_weapon(fleet):
         print('表示された番号を選んでください。')
 
 
+# 行動をする関数
 def perform_player_action(key, player, enemy, results, animations):
     weapon = WEAPONS[key]
     center = ask_coord('目標座標「列 行」: ', enemy.size)
@@ -606,6 +607,7 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
             else:
                 key = offer_weapon(player)
                 action_finished = perform_player_action(key, player, enemy, player_shots, animations)
+        # チェック
         if enemy.defeated():
             print('\n*** VICTORY! 敵艦隊を制圧しました！ ***')
             return 'win'
