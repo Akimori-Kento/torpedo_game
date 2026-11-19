@@ -215,6 +215,7 @@ class Fleet:
         near = any((p[0] + dx, p[1] + dy) in self.occupied() for dx, dy in NEIGHBORS)
         return ('near' if near else 'miss'), None
 
+# 攻撃できる艦が一隻でもあるか確認する関数
     def has_offense(self):
         return any(s.is_alive() and any(WEAPONS[k].kind == 'attack' for k in s.weapons)
                    for s in self.ships)
@@ -293,6 +294,7 @@ SINKING = r'''
 '''
 
 
+# 少し待つ演出
 def animation(ascii_art, enabled=True):
     if enabled:
         print('\n' + ascii_art)
@@ -322,6 +324,7 @@ def ask_coord(prompt, size=SIZE):
         print(f'座標は「列 行」で入力してください（例: 3 5、1〜{size}）。qで終了。')
 
 
+# 盤面の攻撃結果や検索結果を文字列に変換する関数
 def board_lines(fleet, shots=None, own=False, radar_contacts=None):
     shots = shots or {}
     occupied = {p: ship.symbol for ship in fleet.ships for p in ship.positions}
@@ -344,13 +347,17 @@ def board_lines(fleet, shots=None, own=False, radar_contacts=None):
 
 
 def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False):
+    # 敵の盤面を変数にしている
     left = board_lines(enemy, player_shots, own=reveal_enemy,
                        radar_contacts=player.radar_contacts)
+    # 自分の盤面を変数にしている
     right = board_lines(player, cpu_shots, own=True)
+    
     print(f'\n========== TURN {turn} / 魚雷ゲーム ==========')
     print('敵艦隊: ' + enemy.summary())
     print('自艦隊: ' + player.summary())
     print('     敵の海域（' + ('DEBUG: 艦影公開' if reveal_enemy else '配置は秘密') + '）         自艦隊（被弾状況）')
+    # 盤面の表示
     for a, b in zip(left, right):
         print(f'{a:<26} {b}')
     print('表示: X 命中  o 外れ  ? 至近弾  ^ 艦影反応  - 反応なし  . 未調査')
@@ -365,6 +372,7 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
                                 for k in player.available()))
 
 
+# 戦艦選択
 def choose_fleet(size=SIZE):
     print('\n--- 艦隊編成 ---')
     print(f'艦種は全5種類。{size}×{size}の海域に2〜3隻を選択できます。')
@@ -544,9 +552,11 @@ def make_cpu_fleet(rng, size=SIZE):
 
 
 def run_game(rng, animations=True, auto_demo=False, debug_size=None):
+    # デモ用
     if auto_demo:
         player = Fleet([AttackSubmarine(), StandardSubmarine(), Carrier()])
         player.random_place_all(rng)
+    # 通常ゲーム
     else:
         print('\n========== FLEET COMMAND / 魚雷ゲーム ==========')
         size = debug_size or SIZE
@@ -556,8 +566,11 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
         else:
             print('5種類の艦種から2〜3隻を選んで9x9の海域に配置。敵艦隊の編成は公開、位置は秘密です。')
         print('命中X / 外れo / 至近弾? （周囲8マス以内に艦影あり）')
+        # 戦艦選択
         player = Fleet(choose_fleet(size), size)
+        # 戦艦の配置
         place_player_fleet(player, rng)
+    # デモ用と通常の敵戦配置
     enemy = make_debug_enemy_fleet(debug_size) if debug_size else make_cpu_fleet(rng)
     animation(DEPARTURE, animations)
     player_shots, cpu_shots = {}, {}
@@ -571,7 +584,9 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
         if auto_demo and turn > player.size * player.size * 3 + 10:
             raise RuntimeError('終了できないゲーム状態を検出しました')
         if not auto_demo:
+            # 盤面の初期設定
             show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=bool(debug_size))
+        # 行動選択
         action_finished = False
         while not action_finished:
             if auto_demo:
