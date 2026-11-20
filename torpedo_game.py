@@ -297,26 +297,26 @@ class CPU:
             self.priority.extend(candidates)
 
 
-DEPARTURE = r'''
+DEPARTURE = rf'''
                       |\
                  _____|_\________
          _______/_______________  \____
     ____/  _  _   _   _  _     \______\____
    /_________________________________________\
    \_________________________________________/
- ~~~~~~\_________________________________/~~~~~~~~
+ {COLORS["cyan"]}~~~~~~{RESET}\_________________________________/{COLORS["cyan"]}~~~~~~~~
  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                  FLEET DEPARTURE
+                  {COLORS["green"]}FLEET DEPARTURE{RESET}
 '''
 
-SINKING = r'''
+SINKING = rf'''
                  |\       *
          ________|_\___  ***
      ___/______________\_***___
-  ~~~\____________________/~~~~~~~~~~~~~~~~
-  ~~~~~\______________/~~~~~~~~~~~~~~~~~~~~
-  ~~~~~~~~~~~\____/~~~~~~~~~~~~~~~~~~~~~~~~
-                 ENEMY SUNK!
+  {COLORS["cyan"]}~~~{RESET}\____________________/{COLORS["cyan"]}~~~~~~~~~~~~~~~~
+  ~~~~~{RESET}\______________/{COLORS["cyan"]}~~~~~~~~~~~~~~~~~~~~
+  ~~~~~~~~~~~{RESET}\____/{COLORS["cyan"]}~~~~~~~~~~~~~~~~~~~~~~~~
+                 {COLORS["green"]}ENEMY SUNK!{RESET}
 '''
 
 
@@ -388,7 +388,7 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
     # 自分の盤面情報を代入
     right = board_lines(player, cpu_shots, own=True)
     
-    print(f'\n========== TURN {turn} / 魚雷ゲーム ==========')
+    print(f'\n{COLORS["cyan"]}========== TURN {turn} / 魚雷ゲーム =========={RESET}')
     print('敵艦隊: ' + enemy.summary())
     print('自艦隊: ' + player.summary())
     print('     敵の海域（' + ('DEBUG: 艦影公開' if reveal_enemy else '配置は秘密') + '）         自艦隊（被弾状況）')
@@ -411,16 +411,16 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
 
 # 戦艦選択
 def choose_fleet(size=SIZE):
-    print('\n--- 艦隊編成 ---')
+    print(f'\n--- \033[1;100m艦隊編成{RESET} ---')
     print(f'艦種は全5種類。{size}×{size}の海域に2〜3隻を選択できます。')
-    print('同じ艦種を複数選んでもOKです（例: 2 2 5）。')
+    print(f'同じ艦種を複数選んでもOKです{COLORS["gray"]}（例: 2 2 5）{RESET}')
     for k, ctor in SHIP_TYPES.items():
         s = ctor()
         print(f' {k}: {s.name} ({s.width}x{s.height}) | {", ".join(WEAPONS[w].name for w in s.weapons)}')
-    print('※空母・偵察機は攻撃能力なし。通常レーダーは両艦とも無制限です。')
-    print('※支援艦だけの編成も選択できますが、攻撃不能のため戦闘開始時に敗北します。')
+    print(f'{COLORS["Bold_text"]}{COLORS["white"]}※空母・偵察機は攻撃能力なし。通常レーダーは両艦とも無制限です。')
+    print(f'※支援艦だけの編成も選択できますが、\033[4m攻撃不能のため戦闘開始時に\033[31m敗北{COLORS["Bold_text"]}{COLORS["white"]}します。{RESET}')
     while True:
-        s = input('5種類から2〜3隻の番号を空白区切りで入力 (例: 1 4 5): ').strip()
+        s = input(f'5種類から2〜3隻の番号を空白区切りで入力 {COLORS["gray"]}(例: 1 4 5){RESET}: ').strip()
         if s.lower() == 'q':
             raise KeyboardInterrupt
         values = s.split()
@@ -597,14 +597,14 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
         player.random_place_all(rng)
     # 通常ゲーム
     else:
-        print('\n========== FLEET COMMAND / 魚雷ゲーム ==========')
+        print(f'\n{COLORS["cyan"]}========== FLEET COMMAND / 魚雷ゲーム =========={RESET}')
         size = debug_size or SIZE
         if debug_size:
             print(f'【DEBUG {size}×{size}】敵の艦影を公開／固定配置／敵の反撃なし。')
             print('命中やレーダーの検証用です。通常モードとはルールが異なります。')
         else:
             print('5種類の艦種から2〜3隻を選んで9x9の海域に配置。敵艦隊の編成は公開、位置は秘密です。')
-        print('命中X / 外れo / 至近弾? （周囲8マス以内に艦影あり）')
+        print(f'命中\033[31mX{RESET} / 外れo / 至近弾{COLORS["yellow"]}?{RESET} {COLORS["gray"]}（周囲8マス以内に艦影あり）{RESET}')
         # 戦艦選択
         player = Fleet(choose_fleet(size), size)
         # 戦艦の配置
