@@ -21,8 +21,8 @@ DIRECTIONS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 NEIGHBORS = [(dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dx or dy]
 
 COLORS = {
-    "red": "\033[91m",
-    "yellow": "\033[93m",
+    "red": "\033[31m",
+    "yellow": "\033[33m",
     "green": "\033[32m",
     "cyan": "\033[96m",
     "gray": "\033[90m",
@@ -417,7 +417,7 @@ def choose_fleet(size=SIZE):
     for k, ctor in SHIP_TYPES.items():
         s = ctor()
         print(f' {k}: {s.name} ({s.width}x{s.height}) | {", ".join(WEAPONS[w].name for w in s.weapons)}')
-    print(f'{COLORS["Bold_text"]}{COLORS["white"]}※空母・偵察機は攻撃能力なし。通常レーダーは両艦とも無制限です。')
+    print(f'\n{COLORS["Bold_text"]}{COLORS["white"]}※空母・偵察機は攻撃能力なし。通常レーダーは両艦とも無制限です。')
     print(f'※支援艦だけの編成も選択できますが、\033[4m攻撃不能のため戦闘開始時に\033[31m敗北{COLORS["Bold_text"]}{COLORS["white"]}します。{RESET}')
     while True:
         s = input(f'5種類から2〜3隻の番号を空白区切りで入力 {COLORS["gray"]}(例: 1 4 5){RESET}: ').strip()
@@ -470,7 +470,7 @@ def try_place_all(fleet, rng):
 
 
 def place_player_fleet(fleet, rng):
-    s = input('配置方法 [a: 自動 / m: 手動] (Enterで自動): ').strip().lower()
+    s = input('\n配置方法 [a: 自動 / m: 手動] (Enterで自動): ').strip().lower()
     if s != 'm':
         if not try_place_all(fleet, rng):
             raise RuntimeError('艦船を配置できません。編成を変更してください。')
@@ -604,7 +604,7 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
             print('命中やレーダーの検証用です。通常モードとはルールが異なります。')
         else:
             print('5種類の艦種から2〜3隻を選んで9x9の海域に配置。敵艦隊の編成は公開、位置は秘密です。')
-        print(f'命中\033[31mX{RESET} / 外れo / 至近弾{COLORS["yellow"]}?{RESET} {COLORS["gray"]}（周囲8マス以内に艦影あり）{RESET}')
+        print(f'命中{COLORS["red"]}X{RESET} / 外れo / 至近弾{COLORS["yellow"]}?{RESET} {COLORS["gray"]}（周囲8マス以内に艦影あり）{RESET}')
         # 戦艦選択
         player = Fleet(choose_fleet(size), size)
         # 戦艦の配置
