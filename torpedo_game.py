@@ -12,6 +12,7 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 import random
 import time
+import sys
 
 SIZE = 9
 RADAR_LIFETIME = 2  # 索敵した後のプレイヤー行動2回まで表示
@@ -19,11 +20,32 @@ SHIPS_PER_FLEET = 3  # 編成可能な隻数。2隻編成でも開始できる
 DIRECTIONS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 NEIGHBORS = [(dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dx or dy]
 
+COLORS = {
+    "red": "\033[91m",
+    "yellow": "\033[93m",
+    "green": "\033[32m",
+    "cyan": "\033[96m",
+    "gray": "\033[90m",
+    "orange": "\033[38;5;208m",
+    "white": "\033[1;97m",
+    "Bold_text": "\033[1m"
+}
+RESET = "\033[0m"
 
+color_tag = {
+    "X": "red",
+    "?": "yellow",
+    "^": "green", "-": "white", ".":"gray",
+    "A": "orange", "S": "orange", "N": "orange",
+    "C": "cyan" ,"P": "cyan"
+}
+
+# 盤面内か確認する関数
 def in_bounds(p, size=SIZE):
     return 0 <= p[0] < size and 0 <= p[1] < size
 
 
+# 長方形の座標を作る関数
 def cells_in_rect(center, width, height):
     x, y = center
     return [(x + dx, y + dy)
@@ -41,12 +63,15 @@ class Ship:
     positions: set[tuple[int, int]] = field(default_factory=set)
     hits: set[tuple[int, int]] = field(default_factory=set)
 
+    # 撃墜されたか確認する
     def is_sunk(self):
         return bool(self.positions) and self.positions <= self.hits
 
+    # 生きてるか確認する
     def is_alive(self):
         return bool(self.positions) and not self.is_sunk()
 
+    # 座標を取る
     def place(self, x, y, rotated=False):
         w, h = (self.height, self.width) if rotated else (self.width, self.height)
         return {(x + dx, y + dy) for dy in range(h) for dx in range(w)}
@@ -77,6 +102,7 @@ class Scout(Ship):
         super().__init__('偵察機', 'P', 1, 1, ('radar', 'wide_radar', 'directional_radar'))
 
 
+# 戦艦の種類
 SHIP_TYPES = {
     '1': AttackSubmarine, '2': StandardSubmarine, '3': NuclearSubmarine,
     '4': Carrier, '5': Scout,
@@ -342,15 +368,24 @@ def board_lines(fleet, shots=None, own=False, radar_contacts=None):
                 tiles.append('^' if radar_contacts[p].detected else '-')
             else:
                 tiles.append('.')
-        rows.append(f'{y + 1:>2}  ' + ' '.join(tiles))
+        rows.append(f'{y + 1:>2}  ' + ' '.join(color_tile(tile) for tile in tiles))
     return rows
 
 
+# 色を付ける関数
+def color_tile(tile):
+    color_name = color_tag.get(tile, "")
+    color_code = COLORS.get(color_name, "")
+    if color_code:
+        return color_code + tile + RESET
+    return tile
+
+
 def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False):
-    # 敵の盤面を変数にしている
+    # 敵の盤面情報を代入
     left = board_lines(enemy, player_shots, own=reveal_enemy,
                        radar_contacts=player.radar_contacts)
-    # 自分の盤面を変数にしている
+    # 自分の盤面情報を代入
     right = board_lines(player, cpu_shots, own=True)
     
     print(f'\n========== TURN {turn} / 魚雷ゲーム ==========')
@@ -358,8 +393,10 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
     print('自艦隊: ' + player.summary())
     print('     敵の海域（' + ('DEBUG: 艦影公開' if reveal_enemy else '配置は秘密') + '）         自艦隊（被弾状況）')
     # 盤面の表示
+    board_width = 4 + enemy.size + (enemy.size - 1)
+    gap = " " * max(1, 27 -board_width)
     for a, b in zip(left, right):
-        print(f'{a:<26} {b}')
+        print(a + gap + b)
     print('表示: X 命中  o 外れ  ? 至近弾  ^ 艦影反応  - 反応なし  . 未調査')
     if player.radar_contacts:
         contact_counts = Counter(c.remaining for c in player.radar_contacts.values())
@@ -522,7 +559,7 @@ def cpu_turn(cpu, player, shots, animations):
         print('こちらの', sunk.name, 'が撃沈されました！')
         animation(SINKING, animations)
 
-
+# デモ
 def make_debug_enemy_fleet(size):
     """4〜6マスの固定敵艦配置。命中・至近弾・撃沈を再現しやすくする。"""
     if size == 4:
@@ -543,6 +580,7 @@ def make_debug_enemy_fleet(size):
     return fleet
 
 
+# CPU
 def make_cpu_fleet(rng, size=SIZE):
     # 攻撃可能艦は必ず含める（プレイヤー側は空母だけの編成も許可）
     pool = [AttackSubmarine, StandardSubmarine, NuclearSubmarine, Carrier, Scout]
@@ -590,6 +628,7 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
         # 行動選択
         action_finished = False
         while not action_finished:
+            # デモ
             if auto_demo:
                 keys = [k for k in player.available() if WEAPONS[k].kind == 'attack']
                 key = 'torpedo' if 'torpedo' in keys else (keys[0] if keys else None)
@@ -604,6 +643,7 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
                 if sunk and animations:
                     animation(SINKING, True)
                 action_finished = True
+            # 通常ゲーム
             else:
                 key = offer_weapon(player)
                 action_finished = perform_player_action(key, player, enemy, player_shots, animations)
