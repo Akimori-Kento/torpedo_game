@@ -62,6 +62,7 @@ class Ship:
     weapons: tuple[str, ...] = ('torpedo',)
     positions: set[tuple[int, int]] = field(default_factory=set)
     hits: set[tuple[int, int]] = field(default_factory=set)
+    ammo: dict[str, int | None] = field(default_factory=dict)
 
     # 撃墜されたか確認する
     def is_sunk(self):
@@ -181,7 +182,8 @@ class Fleet:
     def __init__(self, ships, size=SIZE):
         self.ships = ships
         self.size = size
-        self.ammo = {k: w.limit for k, w in WEAPONS.items()}
+        for ship in self.ships:
+            ship.ammo = {key: WEAPONS[key].limit for key in ship.weapons}
         self.radar_logs = []
         self.radar_contacts: dict[tuple[int, int], RadarContact] = {}
         self.radar_last_scan = None  # (兵装名, 探知した艦影マス数)
@@ -243,25 +245,41 @@ class Fleet:
 
 # 攻撃できる艦が一隻でもあるか確認する関数
     def has_offense(self):
-        return any(s.is_alive() and any(WEAPONS[k].kind == 'attack' for k in s.weapons)
-                   for s in self.ships)
+        return any(WEAPONS[key].kind == 'attack' for key in self.available())
 
     # 使える兵器一覧を返す
     def available(self):
         keys = set()  # レーダーも艦種に紐づく。空母・偵察機の生存中のみ使用可能
         for ship in self.ships:
             if ship.is_alive():
-                keys.update(ship.weapons)
-        return [key for key in WEAPONS if key in keys and
-                (self.ammo[key] is None or self.ammo[key] > 0)]
+                for key, remaining in ship.ammo.items():
+                    if remaining is None or remaining > 0:
+                        keys.add(key)
+        return [key for key in WEAPONS if key in keys]
 
     # 使用回数を減らす
     def use_ammo(self, key):
-        if key not in self.available():
-            return False
-        if self.ammo[key] is not None:
-            self.ammo[key] -= 1
-        return True
+        for ship in self.ships:
+            if not ship.is_alive() or key not in ship.ammo:
+                continue
+            remaining = ship.ammo[key]
+            if remaining is None:
+                return True
+            if remaining > 0:
+                ship.ammo[key] -= 1
+                return True
+        return False
+    
+    def remaining_ammo(self, key):
+        total = 0
+        for ship in self.ships:
+            if not ship.is_alive() or key not in ship.ammo:
+                continue
+            remaining = ship.ammo[key]
+            if remaining is None:
+                return None
+            total += remaining
+        return total
 
     # 敗北したかを判断する
     def defeated(self):
@@ -409,8 +427,12 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
         if player.radar_last_scan:
             name, count = player.radar_last_scan
             print(f'直近の索敵: {name} / 艦影反応 {count}マス')
-    print('兵装: ' + ' / '.join(f'{WEAPONS[k].name}[{"∞" if player.ammo[k] is None else player.ammo[k]}]'
-                                for k in player.available()))
+    weapon_labels = []
+    for key in player.available():
+        remaining = player.remaining_ammo(key)
+        count = "∞" if remaining is None else remaining
+        weapon_labels.append(f"{WEAPONS[key].name}[{count}]")
+    print('兵装: ' + ' / '.join(weapon_labels))
 
 
 # 戦艦選択
