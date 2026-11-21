@@ -397,7 +397,7 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
     gap = " " * max(1, 27 -board_width)
     for a, b in zip(left, right):
         print(a + gap + b)
-    print('表示: X 命中  o 外れ  ? 至近弾  ^ 艦影反応  - 反応なし  . 未調査')
+    print(f'表示: {COLORS["red"]}X{RESET} 命中  o 外れ  {COLORS["yellow"]}?{RESET} 至近弾  {COLORS["green"]}^{RESET} 艦影反応  - 反応なし  . 未調査')
     if player.radar_contacts:
         contact_counts = Counter(c.remaining for c in player.radar_contacts.values())
         time_info = ' / '.join(f'残り{n}行動:{count}マス' for n, count in sorted(contact_counts.items()))
@@ -528,7 +528,7 @@ def perform_player_action(key, player, enemy, results, animations):
         count = player.record_radar_scan(targets, enemy.occupied(), weapon.name)
         print(f'索敵結果: {len(targets)}マスを調査。艦影反応 {count} マス。')
         player.radar_logs.append((key, center, count))
-        print(f'艦影あり ^ / 反応なし - を表示（探索後の{RADAR_LIFETIME}行動まで有効）。')
+        print(f'艦影あり {COLORS["green"]}^{RESET} / 反応なし - を表示（探索後の{RADAR_LIFETIME}行動まで有効）。')
         return True
     # 攻撃前の情報を使って座標を選べるよう、攻撃成立後に寿命を進める。
     player.advance_radar_time()
@@ -539,7 +539,7 @@ def perform_player_action(key, player, enemy, results, animations):
             continue
         outcome, sunk = enemy.attack(p)
         results[p] = outcome
-        print(f'{label}: ' + {'hit': '命中！', 'sunk': '撃沈！', 'miss': '外れ', 'near': '至近弾！'}[outcome])
+        print(f'{label}: ' + {'hit': f'{COLORS["red"]}命中！{RESET}', 'sunk': f'\033[1;31m撃沈！{RESET}', 'miss': '外れ', 'near': f'{COLORS["yellow"]}至近弾！{RESET}'}[outcome])
         if sunk:
             print('撃沈艦:', sunk.name)
             animation(SINKING, animations)
