@@ -449,7 +449,7 @@ def show_result(outcome, turn, player, enemy):
     
     print(f'\n自艦隊: {player.summary()}')
     print(f'敵艦隊: {enemy.summary()}')
-    print('============================')
+    print(f'{COLORS["cyan"]}============================{RESET}')
     
 # 戦艦選択
 def choose_fleet(size=SIZE):
