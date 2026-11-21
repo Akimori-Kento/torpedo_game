@@ -433,8 +433,24 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
         count = "∞" if remaining is None else remaining
         weapon_labels.append(f"{WEAPONS[key].name}[{count}]")
     print('兵装: ' + ' / '.join(weapon_labels))
-
-
+    
+def show_result(outcome, turn, player, enemy):
+    left = board_lines(enemy, own=True)
+    right = board_lines(player, own=True)
+    
+    print(f'\n{COLORS["cyan"]}========== RESULT =========={RESET}')
+    print('勝利！' if outcome == 'win' else '敗北……')
+    print(f"ターン数: {turn}")
+    
+    board_width = 4 + enemy.size + (enemy.size - 1)
+    gap = " " * max(1, 27 -board_width)
+    for a, b in zip(left, right):
+        print(a + gap + b)
+    
+    print(f'\n自艦隊: {player.summary()}')
+    print(f'敵艦隊: {enemy.summary()}')
+    print('============================')
+    
 # 戦艦選択
 def choose_fleet(size=SIZE):
     print(f'\n--- \033[1;100m艦隊編成{RESET} ---')
@@ -580,9 +596,9 @@ def cpu_turn(cpu, player, shots, animations):
     shots[p] = outcome
     cpu.feedback(p, outcome)
     print(f'敵の攻撃 ({p[0] + 1},{p[1] + 1}): ' +
-          {'hit': '命中！', 'sunk': '撃沈！', 'miss': '外れ', 'near': '至近弾！'}[outcome])
+          {'hit': f'{COLORS["red"]}命中！{RESET}', 'sunk': f'\033[1;31m撃沈！{RESET}', 'miss': '外れ', 'near': f'{COLORS["yellow"]}至近弾！{RESET}'}[outcome])
     if sunk:
-        print('こちらの', sunk.name, 'が撃沈されました！')
+        print(f'こちらの', sunk.name, f'が{COLORS["red"]}撃沈{RESET}されました！')
         animation(SINKING, animations)
 
 # デモ
@@ -676,9 +692,11 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
         # チェック
         if enemy.defeated():
             print('\n*** VICTORY! 敵艦隊を制圧しました！ ***')
+            show_result("win", turn, player, enemy)
             return 'win'
         if player.defeated():
             print('\n*** DEFEAT! 自艦隊は戦闘不能です。 ***')
+            show_result("lose", turn, player, enemy)
             return 'lose'
         if debug_size:
             print('【DEBUG】敵の反撃はスキップ。次の検証へ進みます。')
@@ -688,6 +706,7 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
         cpu_turn(cpu, player, cpu_shots, animations and not auto_demo)
         if player.defeated():
             print('\n*** DEFEAT! 自艦隊は戦闘不能です。 ***')
+            show_result("lose", turn, player, enemy)
             return 'lose'
 
 
