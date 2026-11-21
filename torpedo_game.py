@@ -246,6 +246,7 @@ class Fleet:
         return any(s.is_alive() and any(WEAPONS[k].kind == 'attack' for k in s.weapons)
                    for s in self.ships)
 
+    # 使える兵器一覧を返す
     def available(self):
         keys = set()  # レーダーも艦種に紐づく。空母・偵察機の生存中のみ使用可能
         for ship in self.ships:
@@ -254,6 +255,7 @@ class Fleet:
         return [key for key in WEAPONS if key in keys and
                 (self.ammo[key] is None or self.ammo[key] > 0)]
 
+    # 使用回数を減らす
     def use_ammo(self, key):
         if key not in self.available():
             return False
@@ -261,9 +263,11 @@ class Fleet:
             self.ammo[key] -= 1
         return True
 
+    # 敗北したかを判断する
     def defeated(self):
         return all(s.is_sunk() for s in self.ships) or not self.has_offense()
 
+    # 艦隊の構成を返す
     def summary(self):
         counts = Counter(s.name for s in self.ships)
         sunk = Counter(s.name for s in self.ships if s.is_sunk())
@@ -397,7 +401,7 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
     gap = " " * max(1, 27 -board_width)
     for a, b in zip(left, right):
         print(a + gap + b)
-    print(f'表示: {COLORS["red"]}X{RESET} 命中  o 外れ  {COLORS["yellow"]}?{RESET} 至近弾  {COLORS["green"]}^{RESET} 艦影反応  - 反応なし  . 未調査')
+    print(f'\n表示: {COLORS["red"]}X{RESET} 命中  o 外れ  {COLORS["yellow"]}?{RESET} 至近弾  {COLORS["green"]}^{RESET} 艦影反応  - 反応なし  . 未調査')
     if player.radar_contacts:
         contact_counts = Counter(c.remaining for c in player.radar_contacts.values())
         time_info = ' / '.join(f'残り{n}行動:{count}マス' for n, count in sorted(contact_counts.items()))
