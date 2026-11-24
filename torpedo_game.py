@@ -298,19 +298,33 @@ class Fleet:
 
 
 class CPU:
-    def __init__(self, rng, size=SIZE):
+    def __init__(self, rng, enemy, size=SIZE):
         self.rng, self.size = rng, size
         self.tried = set()
         self.priority = deque()
         self.low_priority = deque()
+        self.detected_targets = deque()
 
-    def choose_target(self):
+
+    def choose_target(self, enemy):
+        self.detected_targets = deque(
+            position
+            for position, contact in enemy.radar_contacts.items()
+            if contact.detected and position not in self.tried
+        )
         while self.priority:
             p = self.priority.popleft()
             if p not in self.tried and in_bounds(p, self.size):
                 self.tried.add(p)
                 return p
         remaining = [
+            (x, y) 
+            for y in range(self.size) 
+            for x in range(self.size)
+            if (x, y) not in self.tried and (x, y) in self.detected_targets
+        ]
+        if not remaining:
+            remaining = [
             (x, y) 
             for y in range(self.size) 
             for x in range(self.size)
@@ -614,7 +628,7 @@ def perform_player_action(key, player, enemy, results, animations):
 
 def cpu_turn(rng, cpu, enemy, player, shots, animations):
     while True:
-        center = cpu.choose_target()
+        center = cpu.choose_target(enemy)
         if center is None:
             return
         key = rng.choice(enemy.available())
@@ -625,13 +639,13 @@ def cpu_turn(rng, cpu, enemy, player, shots, animations):
             else None
             )
         extra = (
-            cpu.choose_target()
+            cpu.choose_target(enemy)
             if key == 'double'
             else None
             )
         targets = ([p for p in weapon.scan_cells(center, direction) if in_bounds(p, enemy.size)]
                     if weapon.kind == 'scan' else
-                    [p for p in weapon.targets(center) + ([extra] if extra else []) if in_bounds(p, enemy.size)])
+                    [p for p in weapon.targets(center) + ([extra] if extra else []) if in_bounds(p, player.size)])
         targets = list(dict.fromkeys(targets))
         if (weapon.kind == 'attack' and all(p in shots for p in targets)) or not enemy.use_ammo(key):
             continue
@@ -657,6 +671,17 @@ def cpu_turn(rng, cpu, enemy, player, shots, animations):
             print(f'敵の攻撃 ({p[0] + 1},{p[1] + 1}): ' +
                 {'hit': f'{COLORS["red"]}命中！{RESET}', 'sunk': f'\033[1;31m撃沈！{RESET}', 'miss': '外れ', 'near': f'{COLORS["yellow"]}至近弾！{RESET}'}[outcome])
             if sunk:
+                surrounding = {
+                    (x + dx, y + dy)
+                    for x, y in sunk.positions
+                    for dx, dy in NEIGHBORS
+                    if in_bounds((x + dx, y + dy), player.size)
+                } - sunk.positions
+                cpu.priority = deque(
+                    position
+                    for position in cpu.priority
+                    if position not in surrounding
+                )
                 print(f'こちらの', sunk.name, f'が{COLORS["red"]}撃沈{RESET}されました！')
                 animation(SINKING, animations)
         animation()
@@ -717,7 +742,7 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
     enemy = make_debug_enemy_fleet(debug_size) if debug_size else make_cpu_fleet(rng)
     animation(DEPARTURE, animations)
     player_shots, cpu_shots = {}, {}
-    cpu = CPU(rng, player.size)
+    cpu = CPU(rng, enemy, player.size)
     turn = 0
     if not player.has_offense():
         print('この艦隊には攻撃手段がありません。出撃しましたが戦闘不能で敗北です。')
