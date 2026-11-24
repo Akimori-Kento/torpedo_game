@@ -44,7 +44,7 @@ def in_bounds(p, size=SIZE):
     return 0 <= p[0] < size and 0 <= p[1] < size
 
 
-# 長方形の座標を作る関数
+# 四角形の座標を作る関数
 def cells_in_rect(center, width, height):
     x, y = center
     return [(x + dx, y + dy)
@@ -310,8 +310,19 @@ class CPU:
             if p not in self.tried and in_bounds(p, self.size):
                 self.tried.add(p)
                 return p
-        remaining = [(x, y) for y in range(self.size) for x in range(self.size)
-                     if (x, y) not in (self.tried, self.low_priority)]
+        remaining = [
+            (x, y) 
+            for y in range(self.size) 
+            for x in range(self.size)
+            if (x, y) not in self.tried and (x, y) not in self.low_priority
+        ]
+        if not remaining:
+            remaining = [
+            (x, y)
+            for y in range(self.size)
+            for x in range(self.size)
+            if (x, y) not in self.tried
+        ]
         if not remaining:
             return None
         p = self.rng.choice(remaining)
@@ -353,10 +364,12 @@ SINKING = rf'''
 
 
 # 少し待つ演出
-def animation(ascii_art, enabled=True):
-    if enabled:
+def animation(ascii_art=None, enabled=True):
+    if enabled and ascii_art is not None:
         print('\n' + ascii_art)
-        time.sleep(0.45)
+        time.sleep(0.6)
+    if ascii_art is None:
+        time.sleep(0.6)
 
 
 def parse_coord(raw, size=SIZE):
@@ -418,7 +431,8 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
     left = board_lines(enemy, player_shots, own=reveal_enemy,
                        radar_contacts=player.radar_contacts)
     # 自分の盤面情報を代入
-    right = board_lines(player, cpu_shots, own=True)
+    right = board_lines(player, cpu_shots, own=True,
+                        radar_contacts=enemy.radar_contacts)
     
     print(f'\n{COLORS["cyan"]}========== TURN {turn} / 魚雷ゲーム =========={RESET}')
     print('敵艦隊: ' + enemy.summary())
@@ -578,7 +592,7 @@ def perform_player_action(key, player, enemy, results, animations):
         return False
     if weapon.kind == 'scan':
         count = player.record_radar_scan(targets, enemy.occupied(), weapon.name)
-        print(f'索敵結果: {len(targets)}マスを調査。艦影反応 {count} マス。')
+        print(f'\n索敵結果: {len(targets)}マスを調査。艦影反応 {count} マス。')
         player.radar_logs.append((key, center, count))
         print(f'艦影あり {COLORS["green"]}^{RESET} / 反応なし - を表示（探索後の{RADAR_LIFETIME}行動まで有効）。')
         return True
@@ -598,18 +612,56 @@ def perform_player_action(key, player, enemy, results, animations):
     return True
 
 
-def cpu_turn(cpu, player, shots, animations):
-    p = cpu.choose_target()
-    if p is None:
-        return
-    outcome, sunk = player.attack(p)
-    shots[p] = outcome
-    cpu.feedback(p, outcome)
-    print(f'敵の攻撃 ({p[0] + 1},{p[1] + 1}): ' +
-          {'hit': f'{COLORS["red"]}命中！{RESET}', 'sunk': f'\033[1;31m撃沈！{RESET}', 'miss': '外れ', 'near': f'{COLORS["yellow"]}至近弾！{RESET}'}[outcome])
-    if sunk:
-        print(f'こちらの', sunk.name, f'が{COLORS["red"]}撃沈{RESET}されました！')
-        animation(SINKING, animations)
+def cpu_turn(rng, cpu, enemy, player, shots, animations):
+    while True:
+        center = cpu.choose_target()
+        if center is None:
+            return
+        key = rng.choice(enemy.available())
+        weapon = WEAPONS[key]
+        direction = (
+            rng.choice(DIRECTIONS) 
+            if key == 'directional_radar' 
+            else None
+            )
+        extra = (
+            cpu.choose_target()
+            if key == 'double'
+            else None
+            )
+        targets = ([p for p in weapon.scan_cells(center, direction) if in_bounds(p, enemy.size)]
+                    if weapon.kind == 'scan' else
+                    [p for p in weapon.targets(center) + ([extra] if extra else []) if in_bounds(p, enemy.size)])
+        targets = list(dict.fromkeys(targets))
+        if (weapon.kind == 'attack' and all(p in shots for p in targets)) or not enemy.use_ammo(key):
+            continue
+        if weapon.kind == 'scan':
+            cpu.tried.discard(center)
+            count = enemy.record_radar_scan(targets, player.occupied(), weapon.name)
+            print(f'\n索敵結果: {len(targets)}マスを調査。艦影反応 {count} マス。')
+            enemy.radar_logs.append((key, center, count))
+            print(f'艦影あり {COLORS["green"]}^{RESET} / 反応なし - を表示（探索後の{RADAR_LIFETIME}行動まで有効）。')
+            animation()
+            break
+        enemy.advance_radar_time()
+        print(f"\n敵は{COLORS['red']}{WEAPONS[key].name}{RESET}を使った")
+        for p in targets:
+            label = f'({p[0] + 1},{p[1] + 1})'
+            if p in shots:
+                print(f'{label}: 攻撃済みのためスキップ')
+                continue
+            outcome, sunk = player.attack(p)
+            shots[p] = outcome
+            cpu.tried.add(p)
+            cpu.feedback(p, outcome)
+            print(f'敵の攻撃 ({p[0] + 1},{p[1] + 1}): ' +
+                {'hit': f'{COLORS["red"]}命中！{RESET}', 'sunk': f'\033[1;31m撃沈！{RESET}', 'miss': '外れ', 'near': f'{COLORS["yellow"]}至近弾！{RESET}'}[outcome])
+            if sunk:
+                print(f'こちらの', sunk.name, f'が{COLORS["red"]}撃沈{RESET}されました！')
+                animation(SINKING, animations)
+        animation()
+        break
+
 
 # デモ
 def make_debug_enemy_fleet(size):
@@ -713,7 +765,7 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
             continue
         if not auto_demo:
             input('Enterで敵の反撃へ進む...')
-        cpu_turn(cpu, player, cpu_shots, animations and not auto_demo)
+        cpu_turn(rng, cpu, enemy, player, cpu_shots, animations and not auto_demo)
         if player.defeated():
             print('\n*** DEFEAT! 自艦隊は戦闘不能です。 ***')
             show_result("lose", turn, player, enemy)
