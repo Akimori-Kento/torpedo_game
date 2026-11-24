@@ -12,7 +12,6 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 import random
 import time
-import sys
 
 SIZE = 9
 RADAR_LIFETIME = 2  # 索敵した後のプレイヤー行動2回まで表示
