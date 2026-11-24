@@ -301,9 +301,12 @@ class CPU:
     def __init__(self, rng, enemy, size=SIZE):
         self.rng, self.size = rng, size
         self.tried = set()
-        self.priority = deque()
-        self.low_priority = deque()
         self.detected_targets = deque()
+        self.hit_targets = deque()
+        self.near_targets = deque()
+        self.low_priority = deque()
+        self.not_targets = deque()
+
 
 
     def choose_target(self, enemy):
@@ -312,31 +315,44 @@ class CPU:
             for position, contact in enemy.radar_contacts.items()
             if contact.detected and position not in self.tried
         )
-        while self.priority:
-            p = self.priority.popleft()
-            if p not in self.tried and in_bounds(p, self.size):
-                self.tried.add(p)
-                return p
+        self.not_targets = deque(
+            position
+            for position, contact in enemy.radar_contacts.items()
+            if not contact.detected and position not in self.tried
+        )
+        self.hit_targets = deque(
+            position
+            for position in self.hit_targets
+            if position not in self.not_targets
+        )
+        self.near_targets = deque(
+            position
+            for position in self.near_targets
+            if position not in self.not_targets
+        )
+        for queue in (self.detected_targets, self.hit_targets, self.near_targets):
+            while queue:
+                p = queue.popleft()
+                if p not in self.tried and in_bounds(p, self.size):
+                    self.tried.add(p)
+                    return p
+        
         remaining = [
-            (x, y) 
-            for y in range(self.size) 
-            for x in range(self.size)
-            if (x, y) not in self.tried and (x, y) in self.detected_targets
-        ]
-        if not remaining:
-            remaining = [
-            (x, y) 
-            for y in range(self.size) 
-            for x in range(self.size)
-            if (x, y) not in self.tried and (x, y) not in self.low_priority
-        ]
-        if not remaining:
-            remaining = [
             (x, y)
             for y in range(self.size)
             for x in range(self.size)
             if (x, y) not in self.tried
+            and (x, y) not in self.low_priority
+            and (x, y) not in self.not_targets
         ]
+        if not remaining:
+            remaining = [
+                (x, y)
+                for y in range(self.size)
+                for x in range(self.size)
+                if (x, y) not in self.tried
+                and (x, y) not in self.not_targets
+            ]
         if not remaining:
             return None
         p = self.rng.choice(remaining)
@@ -344,14 +360,21 @@ class CPU:
         return p
 
     def feedback(self, p, result):
-        if result in ('hit', 'near'):
-            candidates = [(p[0] + dx, p[1] + dy) for dx, dy in NEIGHBORS]
-            self.rng.shuffle(candidates)
-            self.priority.extend(candidates)
+        if result == 'hit':
+            offsets = DIRECTIONS
+            queue = self.hit_targets
+        elif result == 'near':
+            offsets = NEIGHBORS
+            queue = self.near_targets
         else:
-            noncandidates = [(p[0] + dx, p[1] + dy) for dx, dy in NEIGHBORS]
-            self.rng.shuffle(noncandidates)
-            self.low_priority.extend(noncandidates)
+            offsets = NEIGHBORS
+            queue = self.low_priority
+        candidates = [
+            (p[0] + dx, p[1] + dy)
+            for dx, dy in offsets
+        ]
+        self.rng.shuffle(candidates)
+        queue.extend(candidates)
 
 
 DEPARTURE = rf'''
@@ -379,11 +402,11 @@ SINKING = rf'''
 
 # 少し待つ演出
 def animation(ascii_art=None, enabled=True):
-    if enabled and ascii_art is not None:
+    if not enabled:
+        return
+    if ascii_art is not None:
         print('\n' + ascii_art)
-        time.sleep(0.6)
-    if ascii_art is None:
-        time.sleep(0.6)
+    time.sleep(0.6)
 
 
 def parse_coord(raw, size=SIZE):
@@ -398,11 +421,13 @@ def parse_coord(raw, size=SIZE):
     return p if in_bounds(p, size) else None
 
 
-def ask_coord(prompt, size=SIZE):
+def ask_coord(prompt, size=SIZE, allow_back=False):
     while True:
         s = input(prompt).strip().lower()
         if s == 'q':
             raise KeyboardInterrupt
+        if allow_back and s == "b":
+            return None
         p = parse_coord(s, size)
         if p is not None:
             return p
@@ -581,18 +606,24 @@ def offer_weapon(fleet):
 # 行動をする関数
 def perform_player_action(key, player, enemy, results, animations):
     weapon = WEAPONS[key]
-    center = ask_coord('目標座標「列 行」: ', enemy.size)
+    center = ask_coord('目標座標「列 行」(b戻る): ', enemy.size, allow_back=True)
+    if center is None:
+        return False
     direction = None
     if key == 'directional_radar':
         while True:
-            d = input('探索方向 [w上/a左/s下/d右]: ').strip().lower()
+            d = input('探索方向 [w上/a左/s下/d右](b戻る): ').strip().lower()
+            if d == "b":
+                return False
             if d in {'w': (0, -1), 'a': (-1, 0), 's': (0, 1), 'd': (1, 0)}:
                 direction = {'w': (0, -1), 'a': (-1, 0), 's': (0, 1), 'd': (1, 0)}[d]
                 break
             print('w/a/s/d を入力してください。')
     extra = None
     if key == 'double':
-        extra = ask_coord('2発目の目標座標「列 行」: ', enemy.size)
+        extra = ask_coord('2発目の目標座標「列 行」(b戻る): ', enemy.size, allow_back=True)
+        if extra is None:
+            return False
     # 重複や盤外を除いた「実際に処理できるマス」を先に確認する
     targets = ([p for p in weapon.scan_cells(center, direction) if in_bounds(p, enemy.size)]
                if weapon.kind == 'scan' else
@@ -643,7 +674,7 @@ def cpu_turn(rng, cpu, enemy, player, shots, animations):
             if key == 'double'
             else None
             )
-        targets = ([p for p in weapon.scan_cells(center, direction) if in_bounds(p, enemy.size)]
+        targets = ([p for p in weapon.scan_cells(center, direction) if in_bounds(p, player.size)]
                     if weapon.kind == 'scan' else
                     [p for p in weapon.targets(center) + ([extra] if extra else []) if in_bounds(p, player.size)])
         targets = list(dict.fromkeys(targets))
@@ -655,7 +686,7 @@ def cpu_turn(rng, cpu, enemy, player, shots, animations):
             print(f'\n索敵結果: {len(targets)}マスを調査。艦影反応 {count} マス。')
             enemy.radar_logs.append((key, center, count))
             print(f'艦影あり {COLORS["green"]}^{RESET} / 反応なし - を表示（探索後の{RADAR_LIFETIME}行動まで有効）。')
-            animation()
+            animation(enabled=animations)
             break
         enemy.advance_radar_time()
         print(f"\n敵は{COLORS['red']}{WEAPONS[key].name}{RESET}を使った")
@@ -677,14 +708,19 @@ def cpu_turn(rng, cpu, enemy, player, shots, animations):
                     for dx, dy in NEIGHBORS
                     if in_bounds((x + dx, y + dy), player.size)
                 } - sunk.positions
-                cpu.priority = deque(
+                cpu.hit_targets = deque(
                     position
-                    for position in cpu.priority
+                    for position in cpu.hit_targets
+                    if position not in surrounding
+                )
+                cpu.near_targets = deque(
+                    position
+                    for position in cpu.near_targets
                     if position not in surrounding
                 )
                 print(f'こちらの', sunk.name, f'が{COLORS["red"]}撃沈{RESET}されました！')
                 animation(SINKING, animations)
-        animation()
+        animation(enabled=animations)
         break
 
 
