@@ -213,9 +213,13 @@ class Fleet:
     def occupied(self):
         return {p for ship in self.ships for p in ship.positions}
 
+
+    # 設置可能か調べる
     def can_place(self, ship, positions):
         return all(in_bounds(p, self.size) for p in positions) and not (positions & self.occupied())
 
+
+    # 設置する
     def place(self, ship, x, y, rotate=False):
         positions = ship.place(x, y, rotate)
         if not self.can_place(ship, positions):
@@ -223,6 +227,8 @@ class Fleet:
         ship.positions = positions
         return True
 
+
+    # ランダム配置
     def random_place_all(self, rng):
         for ship in self.ships:
             for _ in range(1000):
@@ -296,6 +302,7 @@ class CPU:
         self.rng, self.size = rng, size
         self.tried = set()
         self.priority = deque()
+        self.low_priority = deque()
 
     def choose_target(self):
         while self.priority:
@@ -304,7 +311,7 @@ class CPU:
                 self.tried.add(p)
                 return p
         remaining = [(x, y) for y in range(self.size) for x in range(self.size)
-                     if (x, y) not in self.tried]
+                     if (x, y) not in (self.tried, self.low_priority)]
         if not remaining:
             return None
         p = self.rng.choice(remaining)
@@ -316,6 +323,10 @@ class CPU:
             candidates = [(p[0] + dx, p[1] + dy) for dx, dy in NEIGHBORS]
             self.rng.shuffle(candidates)
             self.priority.extend(candidates)
+        else:
+            noncandidates = [(p[0] + dx, p[1] + dy) for dx, dy in NEIGHBORS]
+            self.rng.shuffle(noncandidates)
+            self.low_priority.extend(noncandidates)
 
 
 DEPARTURE = rf'''
