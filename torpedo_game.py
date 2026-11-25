@@ -89,7 +89,7 @@ class StandardSubmarine(Ship):
 
 class NuclearSubmarine(Ship):
     def __init__(self):
-        super().__init__('原子力潜水艦', 'N', 1, 4, ('torpedo',))
+        super().__init__('原子力潜水艦', 'N', 1, 4, ('torpedo', "acoustic"))
 
 
 class StealthSubmarine(Ship):
@@ -118,6 +118,7 @@ class Weapon:
     key = ''
     name = ''
     limit = None  # None: 無制限
+    near_size = 3
     kind = 'attack'
 
     def targets(self, center):
@@ -147,6 +148,11 @@ class CrossTorpedo(Weapon):
         return [center] + [(x + dx, y + dy) for dx, dy in DIRECTIONS]
 
 
+class AcousticTorpedo(Weapon):
+    key, name, limit = "acoustic",  "音響魚雷", 5
+    near_size = 5
+
+
 class BasicRadar(Weapon):
     key, name, limit, kind = 'radar', '通常レーダー(3x3)', None, 'scan'
 
@@ -171,7 +177,7 @@ class DirectionalRadar(Weapon):
 
 # TODOの例：新しい魚雷を作るには Weapon を継承して targets() を変更し、
 # WEAPONS に登録し、Shipサブクラスの weapons に key を追加する。
-WEAPONS = {w.key: w() for w in (Torpedo, DoubleTorpedo, CrossTorpedo,
+WEAPONS = {w.key: w() for w in (Torpedo, DoubleTorpedo, CrossTorpedo, AcousticTorpedo, 
                                 BasicRadar, WideRadar, DirectionalRadar)}
 
 
@@ -251,7 +257,7 @@ class Fleet:
             else:
                 raise RuntimeError('艦隊を配置できません。艦数や盤面を確認してください。')
 
-    def attack(self, p):
+    def attack(self, p, near_size):
         """(結果, 撃沈した艦) を返す。外れの場合は近隣8マスの至近弾も検出。"""
         for ship in self.ships:
             if p in ship.positions:
@@ -259,7 +265,11 @@ class Fleet:
                     return 'repeat', None
                 ship.hits.add(p)
                 return ('sunk' if ship.is_sunk() else 'hit'), (ship if ship.is_sunk() else None)
-        near = any((p[0] + dx, p[1] + dy) in self.occupied() for dx, dy in NEIGHBORS)
+        occupied = self.occupied()
+        near = any(
+            cell in occupied
+            for cell in cells_in_rect(p, near_size, near_size)
+        )
         return ('near' if near else 'miss'), None
 
 # 攻撃できる艦が一隻でもあるか確認する関数
@@ -377,15 +387,23 @@ class CPU:
         self.tried.add(p)
         return TargetChoice(priority=3, position=p)
 
-    def feedback(self, p, result):
+    def feedback(self, p, result, near_size):
         if result == 'hit':
             offsets = DIRECTIONS
             queue = self.hit_targets
         elif result == 'near':
-            offsets = NEIGHBORS
+            offsets = [
+                offset
+                for offset in cells_in_rect((0, 0), near_size, near_size)
+                if offset != (0, 0)
+            ]
             queue = self.near_targets
         else:
-            offsets = NEIGHBORS
+            offsets = [
+                offset
+                for offset in cells_in_rect((0, 0), near_size, near_size)
+                if offset != (0, 0)
+            ]
             queue = self.low_priority
         candidates = [
             (p[0] + dx, p[1] + dy)
@@ -666,7 +684,7 @@ def perform_player_action(key, player, enemy, results, animations):
         if p in results:
             print(f'{label}: 攻撃済みのためスキップ')
             continue
-        outcome, sunk = enemy.attack(p)
+        outcome, sunk = enemy.attack(p, weapon.near_size)
         results[p] = outcome
         print(f'{label}: ' + {'hit': f'{COLORS["red"]}命中！{RESET}', 'sunk': f'\033[1;31m撃沈！{RESET}', 'miss': '外れ', 'near': f'{COLORS["yellow"]}至近弾！{RESET}'}[outcome])
         if sunk:
@@ -729,10 +747,10 @@ def cpu_turn(rng, cpu, enemy, player, shots, animations):
             if p in shots:
                 print(f'{label}: 攻撃済みのためスキップ')
                 continue
-            outcome, sunk = player.attack(p)
+            outcome, sunk = player.attack(p, WEAPONS[key].near_size)
             shots[p] = outcome
             cpu.tried.add(p)
-            cpu.feedback(p, outcome)
+            cpu.feedback(p, outcome, WEAPONS[key].near_size)
             print(f'敵の攻撃 ({p[0] + 1},{p[1] + 1}): ' +
                 {'hit': f'{COLORS["red"]}命中！{RESET}', 'sunk': f'\033[1;31m撃沈！{RESET}', 'miss': '外れ', 'near': f'{COLORS["yellow"]}至近弾！{RESET}'}[outcome])
             if sunk:
@@ -837,7 +855,7 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
                 if not pool:
                     break
                 center = rng.choice(pool)
-                outcome, sunk = enemy.attack(center)
+                outcome, sunk = enemy.attack(center, WEAPONS[key].near_size)
                 player_shots[center] = outcome
                 if sunk and animations:
                     animation(SINKING, True)
