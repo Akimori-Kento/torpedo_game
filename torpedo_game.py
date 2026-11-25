@@ -35,7 +35,7 @@ color_tag = {
     "X": "red",
     "?": "yellow",
     "^": "green", "-": "white", ".":"gray",
-    "A": "orange", "S": "orange", "N": "orange",
+    "A": "orange", "S": "orange", "N": "orange", "T": "orange",
     "C": "cyan" ,"P": "cyan"
 }
 
@@ -92,6 +92,11 @@ class NuclearSubmarine(Ship):
         super().__init__('原子力潜水艦', 'N', 1, 4, ('torpedo',))
 
 
+class StealthSubmarine(Ship):
+    def __init__(self):
+        super().__init__('ステルス潜水艦', 'T', 1, 1, ('torpedo',))
+
+
 class Carrier(Ship):
     def __init__(self):
         super().__init__('空母', 'C', 2, 4, ('radar',))
@@ -104,8 +109,8 @@ class Scout(Ship):
 
 # 戦艦の種類
 SHIP_TYPES = {
-    '1': AttackSubmarine, '2': StandardSubmarine, '3': NuclearSubmarine,
-    '4': Carrier, '5': Scout,
+    '1': AttackSubmarine, '2': StandardSubmarine, '3': NuclearSubmarine, '4':StealthSubmarine,
+    '5': Carrier, '6': Scout,
 }
 
 
@@ -199,10 +204,11 @@ class Fleet:
         if not self.radar_contacts:
             self.radar_last_scan = None
 
-    def record_radar_scan(self, cells, occupied, name):
+    def record_radar_scan(self, cells, enemy, name):
         """既存情報の寿命を進めてから、今回の索敵結果を追加・上書きする。"""
         self.advance_radar_time()
         count = 0
+        occupied = enemy.radar_visible_positions()
         for p in cells:
             detected = p in occupied
             count += detected
@@ -212,6 +218,14 @@ class Fleet:
 
     def occupied(self):
         return {p for ship in self.ships for p in ship.positions}
+    
+    def radar_visible_positions(self):
+        return {
+            p
+            for ship in self.ships
+            if not isinstance(ship, StealthSubmarine)
+            for p in ship.positions
+        }
 
 
     # 設置可能か調べる
@@ -521,7 +535,7 @@ def show_result(outcome, turn, player, enemy):
 # 戦艦選択
 def choose_fleet(size=SIZE):
     print(f'\n--- \033[1;100m艦隊編成{RESET} ---')
-    print(f'艦種は全5種類。{size}×{size}の海域に2〜3隻を選択できます。')
+    print(f'艦種は全6種類。{size}×{size}の海域に2〜3隻を選択できます。')
     print(f'同じ艦種を複数選んでもOKです{COLORS["gray"]}（例: 2 2 5）{RESET}')
     for k, ctor in SHIP_TYPES.items():
         s = ctor()
@@ -529,7 +543,7 @@ def choose_fleet(size=SIZE):
     print(f'\n{COLORS["Bold_text"]}{COLORS["white"]}※空母・偵察機は攻撃能力なし。通常レーダーは両艦とも無制限です。')
     print(f'※支援艦だけの編成も選択できますが、\033[4m攻撃不能のため戦闘開始時に\033[31m敗北{COLORS["Bold_text"]}{COLORS["white"]}します。{RESET}')
     while True:
-        s = input(f'5種類から2〜3隻の番号を空白区切りで入力 {COLORS["gray"]}(例: 1 4 5){RESET}: ').strip()
+        s = input(f'6種類から2〜3隻の番号を空白区切りで入力 {COLORS["gray"]}(例: 1 4 5){RESET}: ').strip()
         if s.lower() == 'q':
             raise KeyboardInterrupt
         values = s.split()
@@ -539,7 +553,7 @@ def choose_fleet(size=SIZE):
                 return [SHIP_TYPES[v]() for v in values]
             print(f'この艦隊は{size}×{size}の海域に配置できません。別の編成を選んでください。')
             continue
-        print('番号1〜5の中から、2〜3隻を選んでください。')
+        print('番号1〜6の中から、2〜3隻を選んでください。')
 
 
 def try_place_all(fleet, rng):
@@ -640,7 +654,7 @@ def perform_player_action(key, player, enemy, results, animations):
         print('この兵装は使用できません。')
         return False
     if weapon.kind == 'scan':
-        count = player.record_radar_scan(targets, enemy.occupied(), weapon.name)
+        count = player.record_radar_scan(targets, enemy, weapon.name)
         print(f'\n索敵結果: {len(targets)}マスを調査。艦影反応 {count} マス。')
         player.radar_logs.append((key, center, count))
         print(f'艦影あり {COLORS["green"]}^{RESET} / 反応なし - を表示（探索後の{RADAR_LIFETIME}行動まで有効）。')
@@ -702,7 +716,7 @@ def cpu_turn(rng, cpu, enemy, player, shots, animations):
             continue
         if weapon.kind == 'scan':
             cpu.tried.discard(center)
-            count = enemy.record_radar_scan(targets, player.occupied(), weapon.name)
+            count = enemy.record_radar_scan(targets, player, weapon.name)
             print(f'\n索敵結果: {len(targets)}マスを調査。艦影反応 {count} マス。')
             enemy.radar_logs.append((key, center, count))
             print(f'艦影あり {COLORS["green"]}^{RESET} / 反応なし - を表示（探索後の{RADAR_LIFETIME}行動まで有効）。')
@@ -768,7 +782,7 @@ def make_debug_enemy_fleet(size):
 # CPU
 def make_cpu_fleet(rng, size=SIZE):
     # 攻撃可能艦は必ず含める（プレイヤー側は空母だけの編成も許可）
-    pool = [AttackSubmarine, StandardSubmarine, NuclearSubmarine, Carrier, Scout]
+    pool = [AttackSubmarine, StandardSubmarine, NuclearSubmarine, StealthSubmarine, Carrier, Scout]
     classes = [rng.choice(pool[:3]), rng.choice(pool), rng.choice(pool)]
     fleet = Fleet([c() for c in classes], size)
     fleet.random_place_all(rng)
@@ -788,7 +802,7 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
             print(f'【DEBUG {size}×{size}】敵の艦影を公開／固定配置／敵の反撃なし。')
             print('命中やレーダーの検証用です。通常モードとはルールが異なります。')
         else:
-            print('5種類の艦種から2〜3隻を選んで9x9の海域に配置。敵艦隊の編成は公開、位置は秘密です。')
+            print('6種類の艦種から2〜3隻を選んで9x9の海域に配置。敵艦隊の編成は公開、位置は秘密です。')
         print(f'命中{COLORS["red"]}X{RESET} / 外れo / 至近弾{COLORS["yellow"]}?{RESET} {COLORS["gray"]}（周囲8マス以内に艦影あり）{RESET}')
         # 戦艦選択
         player = Fleet(choose_fleet(size), size)
