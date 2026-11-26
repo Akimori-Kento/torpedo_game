@@ -31,6 +31,8 @@ COLORS = {
     "yellow_green": "\033[38;5;148m",
     "white": "\033[97m",
     "bold_white": "\033[1;97m",
+    "deep_blue": "\033[38;5;24m",
+    "deep_red": "\033[38;5;88m",
     "bold_text": "\033[1m"
 }
 RESET = "\033[0m"
@@ -502,7 +504,7 @@ def ask_coord(prompt, size=SIZE, allow_back=False):
 
 
 # 盤面の攻撃結果や検索結果を文字列に変換する関数
-def board_lines(fleet, shots=None, own=False, radar_contacts=None, near_misses=None):
+def board_lines(fleet, shots=None, own=False, radar_contacts=None, near_misses=None, coord_color='white'):
     shots = shots or {}
     occupied = {p: ship.symbol for ship in fleet.ships for p in ship.positions}
     radar_contacts = radar_contacts or {}
@@ -512,8 +514,10 @@ def board_lines(fleet, shots=None, own=False, radar_contacts=None, near_misses=N
         for near_miss in near_misses.values()
         for p in near_miss.candidates
     }
-    
-    rows = ['    ' + ' '.join(str(i + 1) for i in range(fleet.size))]
+    header = " ".join(str(i + 1) for i in range(fleet.size))
+    rows = [
+        f'    {COLORS[coord_color]}{header}{RESET}'
+    ]
     for y in range(fleet.size):
         tiles = []
         for x in range(fleet.size):
@@ -542,7 +546,10 @@ def board_lines(fleet, shots=None, own=False, radar_contacts=None, near_misses=N
                 if p in candidate_positions:
                     color_name = 'white'
             tiles.append(color_tile(tile, color_name))
-        rows.append(f'{y + 1:>2}  ' + ' '.join(tiles))
+        rows.append(
+            f'{COLORS[coord_color]}{y + 1:>2}{RESET}  '
+            + ' '.join(tiles)
+        )
     return rows
 
 
@@ -558,16 +565,18 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
     # 敵の盤面情報を代入
     left = board_lines(enemy, player_shots, own=reveal_enemy,
                         radar_contacts=player.radar_contacts,
-                        near_misses=player.near_misses)
+                        near_misses=player.near_misses,
+                        coord_color="deep_red")
     # 自分の盤面情報を代入
     right = board_lines(player, cpu_shots, own=True,
                         radar_contacts=enemy.radar_contacts,
-                        near_misses=enemy.near_misses)
+                        near_misses=enemy.near_misses,
+                        coord_color="deep_blue")
     
     print(f'\n{COLORS["cyan"]}========== TURN {turn} / 魚雷ゲーム =========={RESET}')
-    print('敵艦隊: ' + enemy.summary())
-    print('自艦隊: ' + player.summary())
-    print('     敵の海域（' + ('DEBUG: 艦影公開' if reveal_enemy else '配置は秘密') + '）         自艦隊（被弾状況）')
+    print(f'{COLORS["deep_red"]}敵艦隊: {RESET}' + enemy.summary())
+    print(f'{COLORS["deep_blue"]}自艦隊: {RESET}' + player.summary())
+    print(f'\n   {COLORS["deep_red"]}敵の海域{RESET}（' + ('DEBUG: 艦影公開' if reveal_enemy else '配置は秘密') + f'）     {COLORS["deep_blue"]}自分の海域{RESET}（被弾状況）')
     # 盤面の表示
     board_width = 4 + enemy.size + (enemy.size - 1)
     gap = " " * max(1, 27 -board_width)
@@ -602,8 +611,8 @@ def show_result(outcome, turn, player, enemy):
     for a, b in zip(left, right):
         print(a + gap + b)
     
-    print(f'\n自艦隊: {player.summary()}')
-    print(f'敵艦隊: {enemy.summary()}')
+    print(f'\n{COLORS["deep_blue"]}自艦隊:{RESET} {player.summary()}')
+    print(f'{COLORS["deep_red"]}敵艦隊:{RESET} {enemy.summary()}')
     print(f'{COLORS["cyan"]}============================{RESET}')
     
 # 戦艦選択
@@ -933,11 +942,11 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
                 action_finished = perform_player_action(key, player, enemy, player_shots, animations)
         # チェック
         if enemy.defeated():
-            print('\n*** VICTORY! 敵艦隊を制圧しました！ ***')
+            print(f'\n*** VICTORY! {COLORS["deep_red"]}敵艦隊{RESET}を制圧しました！ ***')
             show_result("win", turn, player, enemy)
             return 'win'
         if player.defeated():
-            print('\n*** DEFEAT! 自艦隊は戦闘不能です。 ***')
+            print(f'\n*** DEFEAT! {COLORS["deep_blue"]}自艦隊{RESET}は\033[1;31m戦闘不能{RESET}です。 ***')
             show_result("lose", turn, player, enemy)
             return 'lose'
         if debug_size:
@@ -947,7 +956,7 @@ def run_game(rng, animations=True, auto_demo=False, debug_size=None):
             input('Enterで敵の反撃へ進む...')
         cpu_turn(rng, cpu, enemy, player, cpu_shots, animations and not auto_demo)
         if player.defeated():
-            print('\n*** DEFEAT! 自艦隊は戦闘不能です。 ***')
+            print(f'\n*** DEFEAT! {COLORS["deep_blue"]}自艦隊{RESET}は\033[1;31m戦闘不能{RESET}です。 ***')
             show_result("lose", turn, player, enemy)
             return 'lose'
 
