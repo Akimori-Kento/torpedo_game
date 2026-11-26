@@ -22,19 +22,23 @@ NEIGHBORS = [(dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if dx or dy]
 COLORS = {
     "red": "\033[31m",
     "yellow": "\033[33m",
+    "pale_yellow": "\033[38;5;222m",
     "green": "\033[32m",
     "cyan": "\033[96m",
+    "blue_green": "\033[38;5;43m",
     "gray": "\033[90m",
     "orange": "\033[38;5;208m",
-    "white": "\033[1;97m",
-    "Bold_text": "\033[1m"
+    "yellow_green": "\033[38;5;148m",
+    "white": "\033[97m",
+    "bold_white": "\033[1;97m",
+    "bold_text": "\033[1m"
 }
 RESET = "\033[0m"
 
 color_tag = {
     "X": "red",
     "?": "yellow",
-    "^": "green", "-": "white", ".":"gray",
+    "^": "green", "-": "bold_white", ".":"gray",
     "A": "orange", "S": "orange", "N": "orange", "T": "orange",
     "C": "cyan" ,"P": "cyan"
 }
@@ -186,7 +190,30 @@ class RadarContact:
     """座標ごとの一時的な探知情報。艦影の有無と残り寿命を保持する。"""
     detected: bool
     remaining: int = RADAR_LIFETIME
-
+    
+@dataclass
+class Nearmiss:
+    position: tuple[int, int]
+    candidates: set[tuple[int, int]]
+    search_positions: set[tuple[int, int]]
+    color: str = 'yellow'
+    
+    @classmethod
+    def create(cls, position, near_size, size):
+        candidates = {
+            cell
+            for cell in cells_in_rect(position, near_size, near_size)
+            if cell != position and in_bounds(cell, size)
+        }
+        return cls(position, candidates.copy(), candidates.copy())
+    
+    def update(self, attacked_positions, sunk_positions):
+        # 攻撃済みの候補が消えていても、元の感知範囲で撃沈との関連を判定する。
+        if self.search_positions & sunk_positions:
+            self.color = 'pale_yellow'
+            self.candidates.clear()
+        self.candidates.difference_update(attacked_positions)
+        self.candidates.difference_update(sunk_positions)
 
 class Fleet:
     def __init__(self, ships, size=SIZE):
@@ -197,6 +224,7 @@ class Fleet:
         self.radar_logs = []
         self.radar_contacts: dict[tuple[int, int], RadarContact] = {}
         self.radar_last_scan = None  # (兵装名, 探知した艦影マス数)
+        self.near_misses: dict[tuple[int, int], Nearmiss] = {}
 
     def advance_radar_time(self):
         """プレイヤーの有効な行動が1回終わったら既存の探知情報を減衰させる。"""
@@ -265,7 +293,12 @@ class Fleet:
                     return 'repeat', None
                 ship.hits.add(p)
                 return ('sunk' if ship.is_sunk() else 'hit'), (ship if ship.is_sunk() else None)
-        occupied = self.occupied()
+        occupied = {
+            cell
+            for ship in self.ships
+            if ship.is_alive()
+            for cell in ship.positions
+        }
         near = any(
             cell in occupied
             for cell in cells_in_rect(p, near_size, near_size)
@@ -471,43 +504,67 @@ def ask_coord(prompt, size=SIZE, allow_back=False):
 
 
 # 盤面の攻撃結果や検索結果を文字列に変換する関数
-def board_lines(fleet, shots=None, own=False, radar_contacts=None):
+def board_lines(fleet, shots=None, own=False, radar_contacts=None, near_misses=None):
     shots = shots or {}
     occupied = {p: ship.symbol for ship in fleet.ships for p in ship.positions}
     radar_contacts = radar_contacts or {}
+    near_misses = near_misses or {}
+    candidate_positions = {
+        p
+        for near_miss in near_misses.values()
+        for p in near_miss.candidates
+    }
+    
     rows = ['    ' + ' '.join(str(i + 1) for i in range(fleet.size))]
     for y in range(fleet.size):
         tiles = []
         for x in range(fleet.size):
             p = x, y
+            color_name = None
             if p in shots:
-                tiles.append({'hit': 'X', 'sunk': 'X', 'miss': 'o', 'near': '?', 'repeat': 'X'}[shots[p]])
+                tile = {'hit': 'X', 'sunk': 'X', 'miss': 'o', 'near': '?', 'repeat': 'X'}[shots[p]]
+                if shots[p] == "near" and p in near_misses:
+                    color_name = near_misses[p].color
+            
             elif own and p in occupied:
-                tiles.append(occupied[p])
+                tile = occupied[p]
+                
+                if p in radar_contacts:
+                    base_color = color_tag.get(tile)
+                    color_name = (
+                        'blue_green'
+                        if base_color == 'cyan'
+                        else 'yellow_green'
+                    )
             elif p in radar_contacts:
-                tiles.append('^' if radar_contacts[p].detected else '-')
+                tile = '^' if radar_contacts[p].detected else '-'
             else:
-                tiles.append('.')
-        rows.append(f'{y + 1:>2}  ' + ' '.join(color_tile(tile) for tile in tiles))
+                tile = '.'
+                
+                if p in candidate_positions:
+                    color_name = 'white'
+            tiles.append(color_tile(tile, color_name))
+        rows.append(f'{y + 1:>2}  ' + ' '.join(tiles))
     return rows
 
 
 # 色を付ける関数
-def color_tile(tile):
-    color_name = color_tag.get(tile, "")
+def color_tile(tile, color_name=None):
+    if color_name is None:
+        color_name = color_tag.get(tile, "")
     color_code = COLORS.get(color_name, "")
-    if color_code:
-        return color_code + tile + RESET
-    return tile
+    return color_code + tile + RESET if color_code else tile
 
 
 def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False):
     # 敵の盤面情報を代入
     left = board_lines(enemy, player_shots, own=reveal_enemy,
-                       radar_contacts=player.radar_contacts)
+                        radar_contacts=player.radar_contacts,
+                        near_misses=player.near_misses)
     # 自分の盤面情報を代入
     right = board_lines(player, cpu_shots, own=True,
-                        radar_contacts=enemy.radar_contacts)
+                        radar_contacts=enemy.radar_contacts,
+                        near_misses=enemy.near_misses)
     
     print(f'\n{COLORS["cyan"]}========== TURN {turn} / 魚雷ゲーム =========={RESET}')
     print('敵艦隊: ' + enemy.summary())
@@ -532,7 +589,8 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
         count = "∞" if remaining is None else remaining
         weapon_labels.append(f"{WEAPONS[key].name}[{count}]")
     print('兵装: ' + ' / '.join(weapon_labels))
-    
+
+
 def show_result(outcome, turn, player, enemy):
     left = board_lines(enemy, own=True)
     right = board_lines(player, own=True)
@@ -558,8 +616,8 @@ def choose_fleet(size=SIZE):
     for k, ctor in SHIP_TYPES.items():
         s = ctor()
         print(f' {k}: {s.name} ({s.width}x{s.height}) | {", ".join(WEAPONS[w].name for w in s.weapons)}')
-    print(f'\n{COLORS["Bold_text"]}{COLORS["white"]}※空母・偵察機は攻撃能力なし。通常レーダーは両艦とも無制限です。')
-    print(f'※支援艦だけの編成も選択できますが、\033[4m攻撃不能のため戦闘開始時に\033[31m敗北{COLORS["Bold_text"]}{COLORS["white"]}します。{RESET}')
+    print(f'\n{COLORS["bold_text"]}{COLORS["bold_white"]}※空母・偵察機は攻撃能力なし。通常レーダーは両艦とも無制限です。')
+    print(f'※支援艦だけの編成も選択できますが、\033[4m攻撃不能のため戦闘開始時に\033[31m敗北{COLORS["bold_text"]}{COLORS["bold_white"]}します。{RESET}')
     while True:
         s = input(f'6種類から2〜3隻の番号を空白区切りで入力 {COLORS["gray"]}(例: 1 4 5){RESET}: ').strip()
         if s.lower() == 'q':
@@ -686,6 +744,12 @@ def perform_player_action(key, player, enemy, results, animations):
             continue
         outcome, sunk = enemy.attack(p, weapon.near_size)
         results[p] = outcome
+        if outcome == "near":
+            player.near_misses[p] = Nearmiss.create(p, weapon.near_size, enemy.size)
+        sunk_positions = sunk.positions if sunk else set()
+        for near_miss in player.near_misses.values():
+            near_miss.update(set(results), sunk_positions)
+
         print(f'{label}: ' + {'hit': f'{COLORS["red"]}命中！{RESET}', 'sunk': f'\033[1;31m撃沈！{RESET}', 'miss': '外れ', 'near': f'{COLORS["yellow"]}至近弾！{RESET}'}[outcome])
         if sunk:
             print('撃沈艦:', sunk.name)
@@ -749,6 +813,11 @@ def cpu_turn(rng, cpu, enemy, player, shots, animations):
                 continue
             outcome, sunk = player.attack(p, WEAPONS[key].near_size)
             shots[p] = outcome
+            if outcome == 'near':
+                enemy.near_misses[p] = Nearmiss.create(p, weapon.near_size, player.size)
+            sunk_positions = sunk.positions if sunk else set()
+            for near_miss in enemy.near_misses.values():
+                near_miss.update(set(shots), sunk_positions)
             cpu.tried.add(p)
             cpu.feedback(p, outcome, WEAPONS[key].near_size)
             print(f'敵の攻撃 ({p[0] + 1},{p[1] + 1}): ' +
