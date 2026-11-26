@@ -159,7 +159,6 @@ python torpedo_game.py --debug 5 --no-animations
 リザルト
 ![alt text](image-2.png)
 
-
 ## 既知の問題・制限事項
 
 - CPUの未攻撃マスがすべてレーダーの「反応なし」になった場合、CPUが行動を繰り返しスキップし、レーダー情報の期限も進まなくなる場合があります。
