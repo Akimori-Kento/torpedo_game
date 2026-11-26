@@ -599,12 +599,14 @@ def show_boards(player, enemy, player_shots, cpu_shots, turn, reveal_enemy=False
 
 
 def show_result(outcome, turn, player, enemy):
-    left = board_lines(enemy, own=True)
-    right = board_lines(player, own=True)
+    left = board_lines(enemy, own=True, coord_color="deep_red")
+    right = board_lines(player, own=True, coord_color="deep_blue")
     
     print(f'\n{COLORS["cyan"]}========== RESULT =========={RESET}')
     print('勝利！' if outcome == 'win' else '敗北……')
     print(f"ターン数: {turn}")
+    print(f'\n       {COLORS["deep_red"]}敵の海域{RESET}                   {COLORS["deep_blue"]}自分の海域{RESET}')
+
     
     board_width = 4 + enemy.size + (enemy.size - 1)
     gap = " " * max(1, 27 -board_width)
