@@ -152,8 +152,11 @@ python torpedo_game.py --debug 5 --no-animations
 - 両艦隊の艦種ごとの隻数と撃沈数を表示し、対戦結果を振り返れるようにしました。
 
 ## スクリーンショット
+開始盤面
 ![alt text](image.png)
+試合中
 ![alt text](image-1.png)
+リザルト
 ![alt text](image-2.png)
 
 
