@@ -384,12 +384,10 @@ class CPU:
         self.hit_targets = deque(
             position
             for position in self.hit_targets
-            if position not in self.not_targets 
         )
         self.near_targets = deque(
             position
             for position in self.near_targets
-            if position not in self.not_targets
         )
         for priority, queue in enumerate((self.detected_targets, self.hit_targets, self.near_targets)):
             while queue:
