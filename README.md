@@ -153,6 +153,8 @@ python torpedo_game.py --debug 5 --no-animations
 
 ## スクリーンショット
 ![alt text](image.png)
+![alt text](image-1.png)
+![alt text](image-2.png)
 
 
 ## 既知の問題・制限事項
